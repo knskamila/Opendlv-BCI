@@ -1,0 +1,7 @@
+version: '2'
+
+services:
+    pupil-listener:
+        image: pupil-modified
+        network_mode: "host"
+        command: "opendlv-pupil --cid=112 --ip=127.0.0.1 --surface=test --tcp=50020 --verbose"
