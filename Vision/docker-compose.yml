@@ -17,7 +17,7 @@ services:
     vision-simple:
         depends_on:
         - video-h264-decoder-amd64
-        image: vision-bci-t
+        image: vision-bci
         network_mode: "host"
         ipc: "host"
         volumes:
