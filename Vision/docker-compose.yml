@@ -1,0 +1,27 @@
+version: '2'
+
+services:
+    video-h264-decoder-amd64:
+        build:
+            context: https://github.com/chalmers-revere/opendlv-video-h264-decoder.git#v0.0.1
+            dockerfile: Dockerfile.amd64
+        restart: on-failure
+        network_mode: "host"
+        ipc: "host"
+        volumes:
+        - /tmp:/tmp
+        environment:
+        - DISPLAY=$DISPLAY
+        command: "--cid=253 --name=imageData"
+
+    vision-simple:
+        depends_on:
+        - video-h264-decoder-amd64
+        image: vision-bci-t
+        network_mode: "host"
+        ipc: "host"
+        volumes:
+        - /tmp:/tmp
+        environment:
+        - DISPLAY=$DISPLAY
+        command: "--cid=253 --name=imageData --width=640 --height=480 --mode=0 --mouse --markers --verbose"
