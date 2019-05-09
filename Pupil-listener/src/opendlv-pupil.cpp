@@ -1,4 +1,6 @@
 /*
+ * Copyright (C) 2019 Kamila Kowalska
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -26,93 +28,6 @@
 #include "cluon-complete.hpp"
 #include "opendlv-standard-message-set.hpp"
 
-struct Param
-{
-  cluon::OD4Session* od4;
-  void* subscriber;
-  std::string SURFACE_NAME;
-  bool VERBOSE;
-};
-
-void fixation(void *param)
-{
-  Param* p = reinterpret_cast<Param*>(param);
-  cluon::OD4Session *od4 = p->od4;
-  void* subscriber_f = p->subscriber;
-  bool VERBOSE = p->VERBOSE;
-  int32_t input_length = 0;
-  bool fixation = false;
-
-  while(od4->isRunning())
-  {
-    char msg[16384];
-    fixation = false;
-    zmq_recv(subscriber_f, msg, 16384, ZMQ_DONTWAIT); //topic discarded
-    input_length = zmq_recv(subscriber_f, msg, 16384, ZMQ_DONTWAIT);
-    
-    if (input_length > 0)
-    {
-      fixation = true; //no other information needed; fixation occurred
-    }
-    
-    if (VERBOSE && fixation) std::cout << "fixation" << std::endl;
-    
-    opendlv::proxy::SwitchStateReading fix;
-    fix.state(fixation);
-    od4->send(fix);
-
-    usleep(1000);
-  } 
-}
-
-void gaze(void *param)
-{
-  Param* p = reinterpret_cast<Param*>(param);
-  cluon::OD4Session *od4 = p->od4;
-  void* subscriber = p->subscriber;
-  bool VERBOSE = p->VERBOSE;
-  int32_t input_length = 0;
-  std::string SURFACE_NAME = p->SURFACE_NAME;
-
-  while(od4->isRunning())
-  {
-    char msg[16384];
-    zmq_recv(subscriber, msg, 16384, 0); // topic, discarded
-    input_length = zmq_recv(subscriber, msg, 16384, 0);
-      
-    msgpack::object_handle message;
-    msgpack::unpack(message, msg, input_length);
-    msgpack::object obj = message.get();
-      
-    std::stringstream buffer;
-    obj = message.get();
-    buffer << obj;
-
-    auto const INPUT_JSON = nlohmann::json::parse(buffer);
-      
-    if(INPUT_JSON["name"] == SURFACE_NAME) //ignore other surfaces
-    {
-      nlohmann::json pos = INPUT_JSON["gaze_on_srf"][0]["norm_pos"];
-      float const x = static_cast<float>(pos[0]);
-      float const y = 1 - static_cast<float>(pos[1]);
-      bool active = ((x > 0 && x < 1 && y < 1 && y > 0) ? 1 : 0);
-      
-      opendlv::logic::sensation::Point gaze;
-      gaze.azimuthAngle(x);
-      gaze.zenithAngle(y);
-      gaze.distance(active);
-
-      od4->send(gaze);
-
-      if (VERBOSE) {
-	  std::cout << "Gaze x: " << x << std::endl;
-	  std::cout << "Gaze y: " << y << std::endl;
-      }
-    }
-      
-  }  
-}
-
 int32_t main(int32_t argc, char **argv)
 {
   int32_t retCode{0};
@@ -127,10 +42,11 @@ int32_t main(int32_t argc, char **argv)
     bool const SIMULATE{commandlineArguments.count("simulate") != 0};
     uint16_t const CID = static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]));
     std::string const IP = commandlineArguments["ip"];
-    std::string const SURFACE = commandlineArguments["surface"];
+    std::string const SURFACE_NAME = commandlineArguments["surface"];
     uint16_t const TCP_PORT = static_cast<uint16_t>(std::stoi(commandlineArguments["tcp"]));
 
     cluon::OD4Session od4{CID};
+    std::mutex threadMutex;
     
     if(SIMULATE)
     {
@@ -187,16 +103,81 @@ int32_t main(int32_t argc, char **argv)
     zmq_connect(subscriber_f, ZMQ_ADDRESS_SUB_F.c_str());
     zmq_setsockopt(subscriber_f, ZMQ_SNDTIMEO, "fixation", strlen("fixation")); //receive fixation msgs
 
-    Param pGaze = {&od4, subscriber, SURFACE, VERBOSE};
-    Param pFixation = {&od4, subscriber_f, "", VERBOSE};
+    std::thread gaze_thread([&od4, &subscriber, &SURFACE_NAME, &VERBOSE, &threadMutex]()
+    {
+      int32_t input_length = 0;
+      while(od4.isRunning())
+      {
+        char msg[16384];
+        zmq_recv(subscriber, msg, 16384, 0); // topic, discarded
+        input_length = zmq_recv(subscriber, msg, 16384, 0);
+      
+        msgpack::object_handle message;
+        msgpack::unpack(message, msg, input_length);
+        msgpack::object obj = message.get();
+      
+        std::stringstream buffer;
+        obj = message.get();
+        buffer << obj;
 
-    std::thread gaze_thread(gaze, (void*)&pGaze);
-    std::thread fixation_thread(fixation, (void*)&pFixation);
+        auto const INPUT_JSON = nlohmann::json::parse(buffer);
+      
+        if(INPUT_JSON["name"] == SURFACE_NAME) //ignore other surfaces
+        {
+          nlohmann::json pos = INPUT_JSON["gaze_on_srf"][0]["norm_pos"];
+          float const x = static_cast<float>(pos[0]);
+          float const y = 1 - static_cast<float>(pos[1]);
+          bool active = ((x > 0 && x < 1 && y < 1 && y > 0) ? 1 : 0);
+      
+          opendlv::logic::sensation::Point gaze;
+          gaze.azimuthAngle(x);
+          gaze.zenithAngle(y);
+          gaze.distance(active);
+          
+          std::lock_guard<std::mutex> lck(threadMutex);
+          od4.send(gaze);
+
+          if (VERBOSE) {
+	    std::cout << "Gaze x: " << x << std::endl;
+	    std::cout << "Gaze y: " << y << std::endl;
+          }
+        }  
+    }});
+
+    std::thread fixation_thread([&od4, &subscriber_f, &VERBOSE, &threadMutex]()
+    {
+ 
+      int32_t input_length = 0;
+      bool fixation = false;
+
+      while(od4.isRunning())
+      {
+        char msg[16384];
+        fixation = false;
+        zmq_recv(subscriber_f, msg, 16384, ZMQ_DONTWAIT); //topic discarded
+        input_length = zmq_recv(subscriber_f, msg, 16384, ZMQ_DONTWAIT);
     
+        if (input_length > 0)
+        {
+          fixation = true; //no other information needed; fixation occurred
+        }
+
+        std::lock_guard<std::mutex> lck(threadMutex);
+        {
+          if (VERBOSE && fixation) std::cout << "fixation" << std::endl;
+
+          opendlv::proxy::SwitchStateReading fix;
+          fix.state(fixation);
+          od4.send(fix);
+        }
+
+        usleep(1000);
+      }
+    });
+
     gaze_thread.join();
     fixation_thread.join();
 
   }
   return retCode;
 }
-
