@@ -1,7 +1,10 @@
 version: '2'
 
 services:
-    pupil-listener:
-        image: pupil-modified
+    eeg-listener:
+        image: eeg
+        privileged: true
+        devices:
+          - "/dev/ttyUSB0:/dev/ttyUSB0"
         network_mode: "host"
-        command: "opendlv-pupil --cid=112 --ip=127.0.0.1 --surface=test --tcp=50020 --verbose"
+        command: "eeg --cid=111 --device=/dev/ttyUSB0 --bins=128 --channels=3 --freq=100 --verbose"

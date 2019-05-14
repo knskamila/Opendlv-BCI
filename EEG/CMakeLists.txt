@@ -1,5 +1,3 @@
-# Copyright (C) 2018 Ola Benderius
-#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -15,18 +13,25 @@
 
 cmake_minimum_required(VERSION 3.2)
 
-project(opendlv-eeg)
+project(opendlv-eeg-usb)
 
-set(OPENDLV_STANDARD_MESSAGE_SET opendlv-standard-message-set-v0.9.4.odvd)
-set(CLUON_COMPLETE cluon-complete-v0.0.120.hpp)
+################################################################################
+# Defining the relevant versions of OpenDLV Standard Message Set and libcluon.
+set(OPENDLV_STANDARD_MESSAGE_SET opendlv-standard-message-set-v0.9.9.odvd)
+set(CLUON_COMPLETE cluon-complete-v0.0.114.hpp)
 
+################################################################################
+# Set the search path for .cmake files.
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH})
 
 ################################################################################
+# This project requires C++14 or newer.
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+# Build a static binary.
+set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -lm -lfftw3")
+# Add further warning levels.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
     -D_XOPEN_SOURCE=700 \
     -D_FORTIFY_SOURCE=2 \
@@ -41,18 +46,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
     -Wunused -Wunused-function -Wunused-label -Wunused-parameter -Wunused-but-set-parameter -Wunused-but-set-variable \
     -Wunused-value -Wunused-variable -Wunused-result \
     -Wmissing-field-initializers -Wmissing-format-attribute -Wmissing-include-dirs -Wmissing-noreturn")
+# Threads are necessary for linking the resulting binaries as UDPReceiver is running in parallel.
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
+find_package(FFTW3 REQUIRED)
 
-set(ZMQ_INCLUDE_DIRS "/usr/local/include")
-set(MSG_INCLUDE_DIRS "/usr/include")
-set(ZMQ_LIBRARY "/usr/local/lib64/libzmq.so")
-set(MSG_LIBRARY "/usr/lib/libmsgpackc.so")
-
-################################################################################
-#add_custom_command(OUTPUT cluon-complete.hpp
-#    COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/src/${CLUON_COMPLETE} ${CMAKE_BINARY_DIR}/cluon-complete.hpp)
-
+include_directories(SYSTEM thirdparty)
 
 ################################################################################
 # Extract cluon-msc from cluon-complete.hpp.
@@ -64,25 +63,49 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/cluon-msc
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/${CLUON_COMPLETE})
 
 ################################################################################
-# Generate opendlv-standard-message-set.{hpp,cpp} from ${OPENDLV_STANDARD_MESSAGE_SET} file.
-add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/opendlv-standard-message-set.cpp
+# Generate opendlv-standard-message-set.hpp from ${OPENDLV_STANDARD_MESSAGE_SET} file.
+add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/opendlv-standard-message-set.hpp
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMAND ${CMAKE_BINARY_DIR}/cluon-msc --cpp-sources --cpp-add-include-file=opendlv-standard-message-set.hpp --out=${CMAKE_BINARY_DIR}/opendlv-standard-message-set.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/${OPENDLV_STANDARD_MESSAGE_SET}
-    COMMAND ${CMAKE_BINARY_DIR}/cluon-msc --cpp-headers --out=${CMAKE_BINARY_DIR}/opendlv-standard-message-set.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/${OPENDLV_STANDARD_MESSAGE_SET}
-DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/${OPENDLV_STANDARD_MESSAGE_SET} ${CMAKE_BINARY_DIR}/cluon-msc)
+    COMMAND ${CMAKE_BINARY_DIR}/cluon-msc --cpp --out=${CMAKE_BINARY_DIR}/opendlv-standard-message-set.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/${OPENDLV_STANDARD_MESSAGE_SET}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/${OPENDLV_STANDARD_MESSAGE_SET} ${CMAKE_BINARY_DIR}/cluon-msc)
 
+# Add current build directory as include directory as it contains generated files.
 include_directories(SYSTEM ${CMAKE_BINARY_DIR})
-include_directories(SYSTEM ${ZMQ_INCLUDE_DIRS})
-include_directories(SYSTEM ${MSG_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+################################################################################
+# Gather all object code first to avoid double compilation.
+add_library(${PROJECT_NAME}-core OBJECT ${CMAKE_CURRENT_SOURCE_DIR}/src/eeg.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/eeg-decoder.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/p300-detector.cpp ${CMAKE_BINARY_DIR}/opendlv-standard-message-set.hpp)
+set(LIBRARIES Threads::Threads)
 
-add_library(${PROJECT_NAME}-core OBJECT ${CMAKE_BINARY_DIR}/opendlv-standard-message-set.cpp)
-set(LIBRARIES Threads::Threads ${ZMQ_LIBRARY} ${MSG_LIBRARY})
+if(UNIX)
+    if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+        find_package(LibRT REQUIRED)
+        set(LIBRARIES ${LIBRARIES} ${LIBRT_LIBRARIES})
+        include_directories(SYSTEM ${LIBRT_INCLUDE_DIR})
+    endif()
+endif()
+
+include_directories(${FFTW3_INCLUDE_DIRS})
+set(LIBRARIES ${LIBRARIES} ${FFTW3_LIBRARIES})
+
+IF(UNIX)
+  SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_RPATH}:\$ORIGIN/../bin:\$ORIGIN")
+ENDIF()
+
 
 ################################################################################
+# Create executable.
 add_executable(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROJECT_NAME}.cpp $<TARGET_OBJECTS:${PROJECT_NAME}-core>)
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 
 ################################################################################
+# Enable unit testing.
+enable_testing()
+add_executable(${PROJECT_NAME}-runner ${CMAKE_CURRENT_SOURCE_DIR}/test/tests-eeg-decoder.cpp $<TARGET_OBJECTS:${PROJECT_NAME}-core>)
+target_link_libraries(${PROJECT_NAME}-runner ${LIBRARIES})
+add_test(NAME ${PROJECT_NAME}-runner COMMAND ${PROJECT_NAME}-runner)
+
+################################################################################
+# Install executable.
 install(TARGETS ${PROJECT_NAME} DESTINATION bin COMPONENT ${PROJECT_NAME})

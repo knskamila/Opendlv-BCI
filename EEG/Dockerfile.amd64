@@ -1,3 +1,5 @@
+# Copyright (C) 2018  Christian Berger
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -11,38 +13,36 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-FROM alpine:3.7 as builder
-
+FROM alpine:edge as builder
 RUN apk update && \
     apk --no-cache add \
-        autoconf \
-        automake \
         cmake \
-        git \
-        libtool \
         g++ \
-        msgpack-c \
-        msgpack-c-dev \
+        linux-headers \
         make \
         upx
-
-RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && ./autogen.sh &&  mkdir build && cd build && cmake -DWITH_PERF_TOOL=OFF -DZMQ_BUILD_TESTS=OFF -DENABLE_CPACK=OFF -DCMAKE_BUILD_TYPE=Release .. && make && make install
-
+RUN apk add fftw fftw-dev fftw-single-libs --verbose --update-cache --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --repository http://dl-3.alpinelinux.org/alpine/edge/main
+# commenting out a problematic line of code:
+RUN sed -i '13 s/^/#/' /usr/lib/cmake/fftw3/FFTW3Config.cmake
 ADD . /opt/sources
 WORKDIR /opt/sources
+
+# RUN git clone git clone --recursive https://github.com/boostorg/boost.git && cd boost && git checkout develop && .\bootstrap.bat && .\b2 --with-circular-buffer
+
 RUN mkdir build && \
     cd build && \
-    cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=/tmp/dest .. && \
-    make && make install && upx -9 /tmp/dest/bin/opendlv-eeg
+    cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=/tmp/opendlv-eeg-usb-dest .. && \
+    make && make test && make install && upx -9 /tmp/opendlv-eeg-usb-dest/bin/opendlv-eeg-usb
 
+# Part to deploy
+FROM alpine:edge
 
-FROM alpine:3.7
-
-RUN apk update && \
-    apk --no-cache add \
-        libstdc++
+RUN echo http://dl-4.alpinelinux.org/alpine/edge/main > /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache fftw-dev\
+         fftw-single-libs
 
 WORKDIR /usr/bin
-COPY --from=builder /tmp/dest /usr
-COPY --from=builder /usr/local/lib64 /usr/lib
-CMD ["/usr/bin/opendlv-eeg"]
+COPY --from=builder /tmp/opendlv-eeg-usb-dest/bin/opendlv-eeg-usb .
+ENTRYPOINT ["/usr/bin/opendlv-eeg-usb"]
+
