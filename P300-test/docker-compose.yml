@@ -2,12 +2,12 @@ version: '2'
 
 services:
     vision-p300:
-        image: p300-vision
+        image: aelv/p300-vision:large
         network_mode: "host"
         ipc: "host"
         environment:
         - DISPLAY=$DISPLAY
-        command: "p300-vision --cid=253 --delay=330"
+        command: "p300-vision --cid=253 --delay=170"
 
     eeg-listener:
         image: aelv/eeg:basic
@@ -15,4 +15,4 @@ services:
         devices:
           - "/dev/ttyUSB0:/dev/ttyUSB0"
         network_mode: "host"
-        command: "eeg --cid=253 --device=/dev/ttyUSB0 --bins=150 --channels=3 --freq=50"
+        command: "eeg --cid=253 --device=/dev/ttyUSB0 --bins=150 --channels=8 --freq=30"
