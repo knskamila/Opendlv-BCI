@@ -15,7 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
- #include "kiwi-image-processing.hpp"
+#include "kiwi-image-processing.hpp"
+
+//using namespace cv;
 
 cv::Mat create_border_image(int width, int height)
 {
@@ -51,10 +53,10 @@ cv::Mat add_markers(cv::Mat mat) noexcept
     marker4.at<uchar>(1,3) = 255;
     marker4.at<uchar>(3,2) = 255;
 
-    cv::cvtColor(marker1, marker1, CV_GRAY2BGRA);
-    cv::cvtColor(marker2, marker2, CV_GRAY2BGRA);
-    cv::cvtColor(marker3, marker3, CV_GRAY2BGRA);
-    cv::cvtColor(marker4, marker4, CV_GRAY2BGRA);
+    cv::cvtColor(marker1, marker1, cv::COLOR_GRAY2BGRA);
+    cv::cvtColor(marker2, marker2, cv::COLOR_GRAY2BGRA);
+    cv::cvtColor(marker3, marker3, cv::COLOR_GRAY2BGRA);
+    cv::cvtColor(marker4, marker4, cv::COLOR_GRAY2BGRA);
 
     cv::resize(marker1, marker1_r, cv::Size(100,100), 0, 0, cv::INTER_NEAREST);
     cv::resize(marker2, marker2_r, cv::Size(100,100), 0, 0, cv::INTER_NEAREST);
@@ -81,7 +83,7 @@ cv::Mat cleanMask(cv::Mat input) noexcept
 	cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
 	cv::Point(erosion_size, erosion_size));
 
-    // Apply erosion or dilation on the image
+    // Apply erosion, dilation on the image
     cv::erode(mask, out, element);
     cv::dilate(out, out, element);
     return out;
@@ -355,4 +357,3 @@ bool isWithin(cv::Scalar hsv, cv::Scalar hsv_min, cv::Scalar hsv_max) noexcept
 
     return true;
 }
-
