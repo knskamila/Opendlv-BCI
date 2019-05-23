@@ -11,19 +11,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-FROM chrberger/cluon-amd64:latest as builder
-#FROM 8675309/ffmpy as builder
+FROM archlinux/base as builder
+RUN pacman -Sy --noconfirm opencv cmake base-devel gtk3
 
-RUN echo http://dl-4.alpinelinux.org/alpine/v3.8/main > /etc/apk/repositories && \
-    echo http://dl-4.alpinelinux.org/alpine/v3.8/community >> /etc/apk/repositories && \
-    echo http://dl-4.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \ 
-    apk update && \
-    apk add --no-cache ffmpeg=3.4.4-r1 \
-        cmake \
-        g++ \
-        opencv \
-        opencv-dev \
-        make
 ADD . /opt/sources
 WORKDIR /opt/sources
 RUN mkdir build && \
@@ -31,19 +21,11 @@ RUN mkdir build && \
     cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=/tmp .. && \
     make && make install
 
+FROM archlinux/base
+RUN pacman -Sy --noconfirm opencv gtk3
+#RUN pacman -U opencv-3.4.2-1-x86_64.pkg.tar.xz
 
-FROM chrberger/cluon-amd64:latest
-MAINTAINER Christian Berger "christian.berger@gu.se"
-
-RUN echo http://dl-4.alpinelinux.org/alpine/v3.8/main > /etc/apk/repositories && \
-    echo http://dl-4.alpinelinux.org/alpine/v3.8/community >> /etc/apk/repositories && \
-    echo http://dl-4.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache ffmpeg=3.4.4-r1\
-        opencv-libs \
-        libcanberra-gtk3
-
+#WORKDIR /usr/binextra/x86_64/opencv/
 WORKDIR /usr/bin
 COPY --from=builder /tmp/bin/opendlv-vision-bci .
 ENTRYPOINT ["/usr/bin/opendlv-vision-bci"]
-
