@@ -45,8 +45,6 @@ int32_t main(int32_t argc, char **argv) {
     const size_t BINS{stoi(commandlineArguments["bins"])};
     const size_t CHANNELS{stoi(commandlineArguments["channels"])};
     const int FREQ{stoi(commandlineArguments["freq"])};
-    //bool stop = false;
-    //std::mutex flagMutex;
     
     /*TEST*/
     /*
@@ -84,33 +82,33 @@ int32_t main(int32_t argc, char **argv) {
 
       while(!eeg.isInitialized())
       {
-		 std::cout << ".";
-		 std::this_thread::sleep_for(std::chrono::seconds(1));
-	  }
-	  std::cout << std::endl;
-	  eeg.stop(); //to make sure everything works as intended;
+        std::cout << ".";
+	std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
+      std::cout << std::endl;
+      eeg.stop(); //to make sure everything works as intended;
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       eeg.start();
 
       while (od4.isRunning()) {
-		/*it is unnecessary to check for P300 too often */
+	/*it is unnecessary to check for P300 too often */
         std::this_thread::sleep_for(std::chrono::milliseconds(FREQ));
         if(eeg.dataReady())
         {
-		  eeg.readData(eegArray);
+          eeg.readData(eegArray);
 		  
           /* Microservice sends RATIO between the power spectrum 1-20 Hz of
            * the FIRST 300 ms of the signal and the remaining part of the buffer.
            * Buffer length is specified by BINS command. */
           float difference = static_cast<float>(p300.detect());
            
-          if(VERBOSE && difference < 10.0f)
+          if(VERBOSE)
             std::cout << "difference: " << difference << std::endl;
            
-		   opendlv::proxy::VoltageReading p300Difference;
-		   p300Difference.voltage(difference);
-           od4.send(p300Difference);
-		}
+	  opendlv::proxy::VoltageReading p300Difference;
+          p300Difference.voltage(difference);
+          od4.send(p300Difference);
+	}
       }
       std::cout << "Stopping stream..." << std::endl;
       eeg.stop();

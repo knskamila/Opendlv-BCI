@@ -107,6 +107,6 @@ double P300Detector::detect() noexcept {
 	total_post += sum_post_channel;
   }
   
-  if(total_pre <= 0.001) return 0;
-  else return total_post/total_pre;
+  if(total_pre < 1.0) return total_post/channels;
+  else return (total_post/channels)/total_pre;
 }
