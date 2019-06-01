@@ -1,0 +1,15 @@
+version: '2'
+
+services:
+    pupil-listener:
+        image: aelv/pupil-gaze:v0.2
+        network_mode: "host"
+        command: "opendlv-gaze --cid=110 --ip=127.0.0.1 --tcp=50020 --eeg=0 --angle=10 --acceleration=20 --deadrange=0.5 --reverserange=0.3 --reverseacc=-5 --verbose"
+
+    eeg-listener:
+        image: aelv/eeg:alternative
+        privileged: true
+        devices:
+          - "/dev/ttyUSB0:/dev/ttyUSB0"
+        network_mode: "host"
+        command: "eeg --cid=109 --device=/dev/ttyUSB0 --bins=150 --channels=3 --freq=50"
